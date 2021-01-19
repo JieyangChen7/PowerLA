@@ -98,8 +98,8 @@ abft_dtrmm(
     magma_side_t side, magma_uplo_t uplo, magma_trans_t trans, magma_diag_t diag,
     magma_int_t m, magma_int_t n, 
     double alpha,
-    magmaDouble_const_ptr dA, magma_int_t ldda,
-    magmaDouble_ptr       dB, magma_int_t lddb,
+    double * dA, int ldda,
+    double *       dB, int lddb,
     magma_int_t nb,
     double * dA_colchk,   int ldda_colchk,
     double * dA_rowchk,   int ldda_rowchk,
@@ -118,10 +118,10 @@ extern "C" magma_int_t
 abft_dlarfb_gpu(
     magma_side_t side, magma_trans_t trans, magma_direct_t direct, magma_storev_t storev,
     magma_int_t m, magma_int_t n, magma_int_t k,
-    magmaDouble_const_ptr dV,    magma_int_t lddv,
-    magmaDouble_const_ptr dT,    magma_int_t lddt,
-    magmaDouble_ptr dC,          magma_int_t lddc,
-    magmaDouble_ptr dwork,       magma_int_t ldwork,
+    double * dV,    int lddv,
+    double * dT,    int lddt,
+    double * dC,    int lddc,
+    double * dwork, int ldwork,
     int nb,
     double * dV_colchk, int lddv_colchk,
     double * dV_rowchk,   int lddv_rowchk,
@@ -247,3 +247,7 @@ void abft_sgemm( magma_trans_t transA, magma_trans_t transB,
 size_t abft_dgemm_flops(magma_trans_t transA, magma_trans_t transB,
             int m, int n, int k, int nb,
             bool COL_FT, bool ROW_FT, bool CHECK_BEFORE, bool CHECK_AFTER);
+
+size_t abft_dlarfb_flops(magma_side_t side, magma_trans_t trans, magma_direct_t direct, magma_storev_t storev,
+                            magma_int_t m, magma_int_t n, magma_int_t k, int nb,
+                             bool COL_FT, bool ROW_FT, bool CHECK_BEFORE, bool CHECK_AFTER);

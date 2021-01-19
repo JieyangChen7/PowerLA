@@ -10,7 +10,12 @@
        
        @generated from src/zlarfb_gpu.cpp, normal z -> d, Thu Oct  8 23:05:25 2020
 */
+#include "../power_adjustment/power_adjustment.h"
 #include "magma_internal.h"
+#include "cuda_runtime.h"
+#include "../fault_tolerance/abft_printer.h"
+#include "../fault_tolerance/abft_encoder.h"
+#include "../fault_tolerance/abft_kernels.h"
 
 /***************************************************************************//**
     Purpose
@@ -133,10 +138,10 @@ extern "C" magma_int_t
 abft_dlarfb_gpu(
     magma_side_t side, magma_trans_t trans, magma_direct_t direct, magma_storev_t storev,
     magma_int_t m, magma_int_t n, magma_int_t k,
-    magmaDouble_const_ptr dV,    magma_int_t lddv,
-    magmaDouble_const_ptr dT,    magma_int_t lddt,
-    magmaDouble_ptr dC,          magma_int_t lddc,
-    magmaDouble_ptr dwork,       magma_int_t ldwork,
+    double * dV,    int lddv,
+    double * dT,    int lddt,
+    double * dC,    int lddc,
+    double * dwork, int ldwork,
     int nb,
     double * dV_colchk, int lddv_colchk,
     double * dV_rowchk,   int lddv_rowchk,
@@ -248,6 +253,7 @@ abft_dlarfb_gpu(
                      dwork_rowchk,   lddwork_rowchk,
                      dwork_colchk_r, lddwork_colchk_r,
                      dwork_rowchk_r, lddwork_rowchk_r,
+                     chk_v, ld_chk_v,
                      COL_FT, ROW_FT, DEBUG, CHECK_BEFORE, CHECK_AFTER,
                      stream1, stream2);
 
@@ -257,7 +263,7 @@ abft_dlarfb_gpu(
         //              c_one, dT(0,0),  lddt,
         //                     dwork(0), ldwork, stream1 );
 
-        anft_dtrmm( MagmaRight, uplo, transt, MagmaNonUnit,
+        abft_dtrmm( MagmaRight, uplo, transt, MagmaNonUnit,
                      n, k,
                      c_one, dT(0,0),  lddt,
                             dwork(0), ldwork, 
@@ -270,10 +276,25 @@ abft_dlarfb_gpu(
                      dwork_rowchk,   lddwork_rowchk,
                      dwork_colchk_r, lddwork_colchk_r,
                      dwork_rowchk_r, lddwork_rowchk_r,
+                     chk_v, ld_chk_v,
                      COL_FT, ROW_FT, DEBUG, CHECK_BEFORE, CHECK_AFTER,
                      stream1, stream2);
 
         // C = C - V W^H = C - V T V^H C = (I - V T V^H) C = H C
+
+        // if (DEBUG) {
+
+        //                 printf( "input matrix A:\n" );
+        //                 printMatrix_gpu(dC, lddc, m, n, nb, nb, stream2);
+        //                 printf( "column chk:\n" );
+        //                 printMatrix_gpu(dC_colchk, lddc_colchk, 
+        //                                 (m / nb) * 2, n, 2, nb, stream2);
+        //                 printf( "row chk:\n" );
+        //                 printMatrix_gpu(dC_rowchk, lddc_rowchk,  
+        //                                 m, (n / nb) * 2, nb, 2, stream2);
+        //             }
+
+
         abft_dgemm( notransV, MagmaTrans,
                      m, n, k,
                      c_neg_one, dV(0,0),  lddv,
@@ -284,14 +305,15 @@ abft_dlarfb_gpu(
                      dV_rowchk,   lddv_rowchk,
                      dV_colchk_r, lddv_colchk_r,
                      dV_rowchk_r, lddv_rowchk_r,
-                     dwork_colchk, lddwork_colchk,
+                     dwork_colchk,   lddwork_colchk,
                      dwork_rowchk,   lddwork_rowchk,
                      dwork_colchk_r, lddwork_colchk_r,
                      dwork_rowchk_r, lddwork_rowchk_r,
-                     dC_colchk, lddc_colchk,
+                     dC_colchk,   lddc_colchk,
                      dC_rowchk,   lddc_rowchk,
                      dC_colchk_r, lddc_colchk_r,
                      dC_rowchk_r, lddc_rowchk_r,
+                     chk_v, ld_chk_v,
                      COL_FT, ROW_FT, DEBUG, CHECK_BEFORE, CHECK_AFTER,
                      stream1, stream2);
     }
@@ -319,6 +341,7 @@ abft_dlarfb_gpu(
                      dwork_rowchk,   lddwork_rowchk,
                      dwork_colchk_r, lddwork_colchk_r,
                      dwork_rowchk_r, lddwork_rowchk_r,
+                     chk_v, ld_chk_v,
                      COL_FT, ROW_FT, DEBUG, CHECK_BEFORE, CHECK_AFTER,
                      stream1, stream2);
 
@@ -328,7 +351,7 @@ abft_dlarfb_gpu(
         //              c_one, dT(0,0),  lddt,
         //                     dwork(0), ldwork, stream1 );
 
-        anft_dtrmm( MagmaRight, uplo, transt, MagmaNonUnit,
+        abft_dtrmm( MagmaRight, uplo, transt, MagmaNonUnit,
                      n, k,
                      c_one, dT(0,0),  lddt,
                             dwork(0), ldwork, 
@@ -341,6 +364,7 @@ abft_dlarfb_gpu(
                      dwork_rowchk,   lddwork_rowchk,
                      dwork_colchk_r, lddwork_colchk_r,
                      dwork_rowchk_r, lddwork_rowchk_r,
+                     chk_v, ld_chk_v,
                      COL_FT, ROW_FT, DEBUG, CHECK_BEFORE, CHECK_AFTER,
                      stream1, stream2);
 
@@ -363,9 +387,62 @@ abft_dlarfb_gpu(
                      dC_rowchk,   lddc_rowchk,
                      dC_colchk_r, lddc_colchk_r,
                      dC_rowchk_r, lddc_rowchk_r,
+                     chk_v, ld_chk_v,
                      COL_FT, ROW_FT, DEBUG, CHECK_BEFORE, CHECK_AFTER,
                      stream1, stream2);
     }
 
     return info;
 } /* magma_dlarfb */
+
+
+size_t abft_dlarfb_flops(magma_side_t side, magma_trans_t trans, magma_direct_t direct, magma_storev_t storev,
+                            magma_int_t m, magma_int_t n, magma_int_t k, int nb,
+                             bool COL_FT, bool ROW_FT,bool CHECK_BEFORE, bool CHECK_AFTER) {
+    /* Local variables */
+    // opposite of trans
+    magma_trans_t transt;
+    if (trans == MagmaNoTrans)
+        transt = MagmaTrans;
+    else
+        transt = MagmaNoTrans;
+    
+    // whether T is upper or lower triangular
+    magma_uplo_t uplo;
+    if (direct == MagmaForward)
+        uplo = MagmaUpper;
+    else
+        uplo = MagmaLower;
+    
+    // whether V is stored transposed or not
+    magma_trans_t notransV, transV;
+    if (storev == MagmaColumnwise) {
+        notransV = MagmaNoTrans;
+        transV   = MagmaTrans;
+    }
+    else {
+        notransV = MagmaTrans;
+        transV   = MagmaNoTrans;
+    }
+
+    if ( side == MagmaLeft ) {
+        // printf("gemm_flops (%d %d %d)(%f %f %f)\n", m, n, k, (double)abft_dgemm_flops( MagmaNoTrans, notransV, m, k, n, nb, COL_FT, ROW_FT, CHECK_BEFORE, CHECK_AFTER)/1e9 ,
+        //         (double)abft_dgemm_flops( MagmaNoTrans, MagmaNoTrans, n, k, k, nb, COL_FT, ROW_FT, CHECK_BEFORE, CHECK_AFTER)/1e9 ,
+        //         (double)abft_dgemm_flops( notransV, MagmaTrans,m, n, k,nb,  COL_FT, ROW_FT, CHECK_BEFORE, CHECK_AFTER)/1e9 );
+        return  abft_dgemm_flops( MagmaNoTrans, notransV, m, k, n, nb, COL_FT, ROW_FT, CHECK_BEFORE, CHECK_AFTER) +
+                abft_dgemm_flops( MagmaNoTrans, MagmaNoTrans, n, k, k, nb, COL_FT, ROW_FT, CHECK_BEFORE, CHECK_AFTER) +
+                abft_dgemm_flops( notransV, MagmaTrans,m, n, k,nb,  COL_FT, ROW_FT, CHECK_BEFORE, CHECK_AFTER);
+
+        
+    } else {
+        // printf("gemm_flops (%d %d %d)(%f %f %f)\n", m, n, k, abft_dgemm_flops( MagmaNoTrans, notransV,  m, k, n, nb, COL_FT, ROW_FT, CHECK_BEFORE, CHECK_AFTER)/1e9 ,
+        //         (double)abft_dgemm_flops( MagmaNoTrans, MagmaNoTrans, n, k, k, nb, COL_FT, ROW_FT, CHECK_BEFORE, CHECK_AFTER)/1e9 ,
+        //         (double)abft_dgemm_flops( MagmaNoTrans, transV, m, n, k, nb, COL_FT, ROW_FT, CHECK_BEFORE, CHECK_AFTER)/1e9 );
+        return  abft_dgemm_flops( MagmaNoTrans, notransV,  m, k, n, nb, COL_FT, ROW_FT, CHECK_BEFORE, CHECK_AFTER) +
+                abft_dgemm_flops( MagmaNoTrans, MagmaNoTrans, n, k, k, nb, COL_FT, ROW_FT, CHECK_BEFORE, CHECK_AFTER) +
+                abft_dgemm_flops( MagmaNoTrans, transV, m, n, k, nb, COL_FT, ROW_FT, CHECK_BEFORE, CHECK_AFTER);
+
+        
+    }
+
+}

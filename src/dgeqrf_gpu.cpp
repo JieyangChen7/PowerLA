@@ -189,7 +189,7 @@ magma_dgeqrf_gpu(
     
     // TODO: use min(m,n), but that affects dT
     nb = magma_get_dgeqrf_nb( m, n );
-    nb = 4;
+    //nb = 2;
     // dT contains 3 blocks:
     // dT    is minmn*nb
     // dR    is minmn*nb
@@ -248,6 +248,7 @@ magma_dgeqrf_gpu(
     double pd_time_pred = 0.0, tmu_time_pred = 0.0;
     double pd_avg_error = 0.0, tmu_avg_error = 0.0; 
     double tmu_ft_time_actual = 0.0;
+    double slack_time_actual_avg = 0.0;
 
     double slack_time;
     double reclaimnation_ratio = 0.8;
@@ -286,9 +287,9 @@ magma_dgeqrf_gpu(
     int last_prof_iter = 1;
 
     /* flags */
-    bool COL_FT = true;
-    bool ROW_FT = true;
-    bool DEBUG = true;
+    bool COL_FT = false;
+    bool ROW_FT = false;
+    bool DEBUG = false;
     bool CHECK_BEFORE = false;
     bool CHECK_AFTER = true;
 
@@ -389,67 +390,40 @@ magma_dgeqrf_gpu(
     double * dA_colchk;
     size_t pitch_dA_colchk = magma_roundup((gpu_row / nb) * 2 * sizeof(double), 32);
     int ldda_colchk = pitch_dA_colchk / sizeof(double);
-    magma_dmalloc(&dA_colchk, pitch_dA_colchk * gpu_col);
+    if (COL_FT || ROW_FT) magma_dmalloc(&dA_colchk, pitch_dA_colchk * gpu_col);
 
     double * dA_colchk_r;
     size_t pitch_dA_colchk_r = magma_roundup((gpu_row / nb) * 2 * sizeof(double), 32);
     int ldda_colchk_r = pitch_dA_colchk_r / sizeof(double);
-    magma_dmalloc(&dA_colchk_r, pitch_dA_colchk_r * gpu_col);
+    if (COL_FT || ROW_FT) magma_dmalloc(&dA_colchk_r, pitch_dA_colchk_r * gpu_col);
 
     double * dA_rowchk;
     size_t pitch_dA_rowchk = magma_roundup(gpu_row * sizeof(double), 32);
     int ldda_rowchk = pitch_dA_rowchk / sizeof(double);
-    magma_dmalloc(&dA_rowchk, pitch_dA_rowchk * (gpu_col / nb) * 2);
+    if (COL_FT || ROW_FT) magma_dmalloc(&dA_rowchk, pitch_dA_rowchk * (gpu_col / nb) * 2);
 
 
     double * dA_rowchk_r;
     size_t pitch_dA_rowchk_r = magma_roundup(gpu_row * sizeof(double), 32);
     int ldda_rowchk_r = pitch_dA_rowchk_r / sizeof(double);
-    magma_dmalloc(&dA_rowchk_r, pitch_dA_rowchk_r * (gpu_col / nb) * 2);
+    if (COL_FT || ROW_FT) magma_dmalloc(&dA_rowchk_r, pitch_dA_rowchk_r * (gpu_col / nb) * 2);
        
     printf( "done.\n" );
-
-    printf( "allocate space for checksums of dT on GPUs......\n" );
-    
-    gpu_row = nb;
-    gpu_col = minmn;
-
-    double * dT_colchk;
-    size_t pitch_dT_colchk = magma_roundup((gpu_row / nb) * 2 * sizeof(double), 32);
-    int lddt_colchk = pitch_dT_colchk / sizeof(double);
-    magma_dmalloc(&dT_colchk, pitch_dT_colchk * gpu_col);
-
-    double * dT_colchk_r;
-    size_t pitch_dT_colchk_r = magma_roundup((gpu_row / nb) * 2 * sizeof(double), 32);
-    int lddt_colchk_r = pitch_dT_colchk_r / sizeof(double);
-    magma_dmalloc(&dT_colchk_r, pitch_dT_colchk_r * gpu_col);
-
-    double * dT_rowchk;
-    size_t pitch_dT_rowchk = magma_roundup(gpu_row * sizeof(double), 32);
-    int lddt_rowchk = pitch_dT_rowchk / sizeof(double);
-    magma_dmalloc(&dT_rowchk, pitch_dT_rowchk * (gpu_col / nb) * 2);
-
-
-    double * dT_rowchk_r;
-    size_t pitch_dT_rowchk_r = magma_roundup(gpu_row * sizeof(double), 32);
-    int lddt_rowchk_r = pitch_dT_rowchk_r / sizeof(double);
-    magma_dmalloc(&dT_rowchk_r, pitch_dT_rowchk_r * (gpu_col / nb) * 2);
-       
-    printf( "done.\n" );
-
    
     printf( "calculate initial checksum on GPUs......\n" ); 
-    col_chk_enc(gpu_row, gpu_col, nb, 
-                dA, ldda,  
-                dev_chk_v, ld_dev_chk_v, 
-                dA_colchk, ldda_colchk, 
-                queues[1]);
+    if (COL_FT || ROW_FT) {
+        col_chk_enc(gpu_row, gpu_col, nb, 
+                    dA, ldda,  
+                    dev_chk_v, ld_dev_chk_v, 
+                    dA_colchk, ldda_colchk, 
+                    queues[1]);
 
-    row_chk_enc(gpu_row, gpu_col, nb, 
-                dA, ldda,  
-                dev_chk_v, ld_dev_chk_v, 
-                dA_rowchk, ldda_rowchk, 
-                queues[1]);
+        row_chk_enc(gpu_row, gpu_col, nb, 
+                    dA, ldda,  
+                    dev_chk_v, ld_dev_chk_v, 
+                    dA_rowchk, ldda_rowchk, 
+                    queues[1]);
+    }
 
     printf( "done.\n" );
 
@@ -464,6 +438,39 @@ magma_dgeqrf_gpu(
         printMatrix_gpu(dA_rowchk, ldda_rowchk,  
                         gpu_row, (gpu_col / nb) * 2, nb, 2, queues[1]);
     }
+
+    printf( "allocate space for checksums of dT on GPUs......\n" );
+    
+    gpu_row = minmn + minmn + n;
+    gpu_col = nb;
+
+    double * dT_colchk;
+    size_t pitch_dT_colchk = magma_roundup((gpu_row / nb) * 2 * sizeof(double), 32);
+    int lddt_colchk = pitch_dT_colchk / sizeof(double);
+    if (COL_FT || ROW_FT) magma_dmalloc(&dT_colchk, pitch_dT_colchk * gpu_col);
+    if (COL_FT || ROW_FT) cudaMemset(dT_colchk, 0, pitch_dT_colchk * gpu_col);
+
+    double * dT_colchk_r;
+    size_t pitch_dT_colchk_r = magma_roundup((gpu_row / nb) * 2 * sizeof(double), 32);
+    int lddt_colchk_r = pitch_dT_colchk_r / sizeof(double);
+    if (COL_FT || ROW_FT) magma_dmalloc(&dT_colchk_r, pitch_dT_colchk_r * gpu_col);
+
+    double * dT_rowchk;
+    size_t pitch_dT_rowchk = magma_roundup(gpu_row * sizeof(double), 32);
+    int lddt_rowchk = pitch_dT_rowchk / sizeof(double);
+    if (COL_FT || ROW_FT) magma_dmalloc(&dT_rowchk, pitch_dT_rowchk * (gpu_col / nb) * 2);
+    if (COL_FT || ROW_FT) cudaMemset(dT_rowchk, 0, pitch_dT_rowchk * (gpu_col / nb) * 2);
+
+
+    double * dT_rowchk_r;
+    size_t pitch_dT_rowchk_r = magma_roundup(gpu_row * sizeof(double), 32);
+    int lddt_rowchk_r = pitch_dT_rowchk_r / sizeof(double);
+    if (COL_FT || ROW_FT) magma_dmalloc(&dT_rowchk_r, pitch_dT_rowchk_r * (gpu_col / nb) * 2);
+       
+    printf( "done.\n" );
+
+
+
     cudaDeviceSynchronize();
     pid = start_measure_cpu();
     start_energy = start_measure_gpu(device);
@@ -479,6 +486,50 @@ magma_dgeqrf_gpu(
             ib = min( minmn-i, nb );
             rows = m - i;
             
+            bool profile = false;
+            if ((i/ib-last_prof_iter)%profile_interval == 0) profile = true;
+            bool predict = false;
+            if (i/ib > 1) predict = true;
+
+            //prediction
+            if (predict) {
+                pd_time_ratio = (2*((double)m-i)*ib*ib-2*ib*ib*ib/3)/(2*((double)m-last_prof_iter*ib)*ib*ib-2*ib*ib*ib/3);
+                // tmu_time_ratio = ((double)(n-j-jb)*jb*j)/((double)(n-jb*last_prof_iter-jb)*jb*jb*last_prof_iter);
+                tmu_time_ratio = (double)abft_dlarfb_flops(MagmaLeft, MagmaConjTrans, MagmaForward, MagmaColumnwise,
+                                                           m-(i-ib), n-(i-ib)-2*ib, ib, ib, COL_FT, ROW_FT, CHECK_BEFORE, CHECK_AFTER)/
+                                        abft_dlarfb_flops(MagmaLeft, MagmaConjTrans, MagmaForward, MagmaColumnwise,
+                                                           m-(last_prof_iter*ib-ib), n-(last_prof_iter*ib-ib)-2*ib, ib, ib, 
+                                                           COL_FT, ROW_FT, CHECK_BEFORE, CHECK_AFTER);
+
+
+                // printf("%f %f %f\n", (double)abft_dlarfb_flops(MagmaLeft, MagmaConjTrans, MagmaForward, MagmaColumnwise,
+                //                                            m-(i-ib), n-(i-ib)-2*ib, ib, ib, COL_FT, ROW_FT, CHECK_BEFORE, CHECK_AFTER)/1e9, 
+                //                      (double)abft_dlarfb_flops(MagmaLeft, MagmaConjTrans, MagmaForward, MagmaColumnwise,
+                //                                            m-(last_prof_iter*ib-ib), n-(last_prof_iter*ib-ib)-2*ib, ib, ib, 
+                //                                            COL_FT, ROW_FT, CHECK_BEFORE, CHECK_AFTER)/1e9,   tmu_time_ratio);
+
+                pd_time_pred = pd_time_prof * pd_time_ratio;
+                
+                tmu_time_pred = tmu_time_prof * tmu_time_ratio;
+
+                slack_time = tmu_time_pred - pd_time_pred;
+
+                // printf("pd: %f, tmu: %f\n", pd_time_pred+((1-reclaimnation_ratio)*slack_time), tmu_time_pred-(reclaimnation_ratio*slack_time));
+
+                tmu_desired_freq = tmu_time_pred/(tmu_time_pred-(reclaimnation_ratio*slack_time)) * tmu_base_freq;
+                tmu_freq = tmu_desired_freq;
+                if (tmu_desired_freq > 2000) tmu_freq = 2000;
+                if (tmu_desired_freq < 500) tmu_freq = 500;
+
+                tmu_desired_offset = 200;
+                tmu_offset = tmu_desired_offset;
+
+                pd_desired_freq = pd_time_pred/(pd_time_pred+((1-reclaimnation_ratio)*slack_time)) * pd_base_freq;
+                pd_freq = pd_desired_freq;
+                if (pd_desired_freq > 3500) pd_freq = 3500;
+                if (pd_desired_freq < 1000) pd_freq = 1000;
+            }
+
             // get i-th panel from device
             magma_dgetmatrix_async( rows, ib,
                                     dA(i,i), ldda,
@@ -486,28 +537,89 @@ magma_dgeqrf_gpu(
             if (i > 0) {
                 // Apply H^H to A(i:m,i+2*ib:n) from the left
                 cols = n - old_i - 2*old_ib;
-                magma_dlarfb_gpu( MagmaLeft, MagmaConjTrans, MagmaForward, MagmaColumnwise,
-                                  m-old_i, cols, old_ib,
+                // magma_dlarfb_gpu( MagmaLeft, MagmaConjTrans, MagmaForward, MagmaColumnwise,
+                //                   m-old_i, cols, old_ib,
+                //                   dA(old_i, old_i         ), ldda, dT(old_i), nb,
+                //                   dA(old_i, old_i+2*old_ib), ldda, dwork(0),  lddwork, queues[0] );
+
+                if (reclaim_slack && i > ib) {
+                    if (tmu_freq != tmu_curr_freq || tmu_offset != tmu_curr_offset) {
+                        adj_gpu(device, tmu_freq, 338000, tmu_offset);
+                        //printf("set to %d\n", tmu_freq);
+                        tmu_curr_freq = tmu_freq;
+                        tmu_curr_offset = tmu_offset;
+                    }
+                }
+                cudaEventRecord(start, queues[0]->cuda_stream());
+                // printf("[i = %d]abft_dlarfb_gpu(%d %d %d)\n",i,  m-old_i, cols, old_ib);
+                abft_dlarfb_gpu( MagmaLeft, MagmaConjTrans, MagmaForward, MagmaColumnwise,
+                                 m-old_i, cols, old_ib,
                                   dA(old_i, old_i         ), ldda, dT(old_i), nb,
-                                  dA(old_i, old_i+2*old_ib), ldda, dwork(0),  lddwork, queues[0] );
+                                  dA(old_i, old_i+2*old_ib), ldda, dwork(0),  lddwork, 
+                                  nb,
+                                  dA_colchk(old_i, old_i),   ldda_colchk,
+                                  dA_rowchk(old_i, old_i),   ldda_rowchk,
+                                  dA_colchk_r(old_i, old_i), ldda_colchk_r,
+                                  dA_rowchk_r(old_i, old_i), ldda_rowchk_r,
+                                  dT_colchk(old_i),   lddt_colchk,
+                                  dT_rowchk(old_i),   lddt_rowchk,
+                                  dT_colchk_r(old_i), lddt_colchk_r,
+                                  dT_rowchk_r(old_i), lddt_rowchk_r,
+                                  dA_colchk(old_i, old_i+2*old_ib),   ldda_colchk,
+                                  dA_rowchk(old_i, old_i+2*old_ib),   ldda_rowchk,
+                                  dA_colchk_r(old_i, old_i+2*old_ib), ldda_colchk_r,
+                                  dA_rowchk_r(old_i, old_i+2*old_ib), ldda_rowchk_r,
+                                  dwork_colchk(0),   lddt_colchk,
+                                  dwork_rowchk(0),   lddt_rowchk,
+                                  dwork_colchk_r(0), lddt_colchk_r,
+                                  dwork_rowchk_r(0), lddt_rowchk_r,
+                                  dev_chk_v, ld_dev_chk_v,
+                                  COL_FT, ROW_FT, DEBUG, CHECK_BEFORE, CHECK_AFTER, 
+                                  queues[0], queues[0]);
+                cudaEventRecord(stop, queues[0]->cuda_stream());
                 
                 // Fix the diagonal block
                 magma_dsetmatrix_async( old_ib, old_ib,
                                         R,         old_ib,
                                         dR(old_i), old_ib, queues[0] );
             }
+
+
+             
             
             magma_queue_sync( queues[1] );  // wait to get work(i)
+            if (reclaim_slack && i > ib) {
+                if (pd_freq != pd_curr_freq) {
+                    adj_cpu(pd_freq);
+                    pd_curr_freq = pd_freq;
+                }
+            }
+            
+            pd_time_actual = magma_wtime();
+
             lapackf77_dgeqrf( &rows, &ib, work, &ldwork, &tau[i], hwork, &lhwork, info );
             // Form the triangular factor of the block reflector in hwork
             // H = H(i) H(i+1) . . . H(i+ib-1)
             lapackf77_dlarft( MagmaForwardStr, MagmaColumnwiseStr,
                               &rows, &ib,
                               work, &ldwork, &tau[i], hwork, &ib );
+
+            pd_time_actual = magma_wtime() - pd_time_actual;
+            pd_time_actual *= 1000;
+            if (profile) pd_time_prof = pd_time_actual;
+            if (predict) pd_avg_error += fabs(pd_time_actual - pd_time_pred) / pd_time_actual;
+
             
             // wait for previous trailing matrix update (above) to finish with R
             magma_queue_sync( queues[0] );
-            
+            cudaEventSynchronize(stop);
+            //tmu_time = magma_wtime() - tmu_time;
+            float t;
+            cudaEventElapsedTime(&t, start, stop);
+            tmu_time_actual = t;
+            if (profile) tmu_time_prof = tmu_time_actual;
+            if (predict) tmu_avg_error += fabs(tmu_time_actual - tmu_time_pred) / tmu_time_actual;
+
             // copy the upper triangle of panel to R and invert it, and
             // set  the upper triangle of panel (V) to identity
             dsplit_diag_block_invert( ib, work, ldwork, R );
@@ -528,16 +640,16 @@ magma_dgeqrf_gpu(
                             dev_chk_v, ld_dev_chk_v, 
                             dA_rowchk(i,i), ldda_rowchk, 
                             queues[1]);
-                if (DEBUG) {
-                    printf( "Panel A (%d * %d):\n", rows, ib);
-                    printMatrix_gpu(dA(i,i), ldda, rows, ib,  nb, nb, queues[1]);
-                    printf( "column chk:\n" );
-                    printMatrix_gpu(dA_colchk(i,i), ldda_colchk, 
-                                    (rows / nb) * 2, ib, 2, nb, queues[1]);
-                    printf( "row chk:\n" );
-                    printMatrix_gpu(dA_rowchk(i,i), ldda_rowchk,  
-                                    rows, (ib / nb) * 2, nb, 2, queues[1]);
-                }
+                // if (DEBUG) {
+                //     printf( "Panel A (%d * %d):\n", rows, ib);
+                //     printMatrix_gpu(dA(i,i), ldda, rows, ib,  nb, nb, queues[1]);
+                //     printf( "column chk:\n" );
+                //     printMatrix_gpu(dA_colchk(i,i), ldda_colchk, 
+                //                     (rows / nb) * 2, ib, 2, nb, queues[1]);
+                //     printf( "row chk:\n" );
+                //     printMatrix_gpu(dA_rowchk(i,i), ldda_rowchk,  
+                //                     rows, (ib / nb) * 2, nb, 2, queues[1]);
+                // }
             }
             
             if (i + ib < n) {
@@ -545,35 +657,77 @@ magma_dgeqrf_gpu(
                 magma_dsetmatrix( ib, ib,
                                   hwork, ib,
                                   dT(i), nb, queues[1] );
-                col_chk_enc_triblock(MagmaUpper, ib,
-                                    dT(i), nb,
-                                    dev_chk_vt, ld_dev_chk_vt,
-                                    dT_colchk(i), lddt_colchk, 
-                                    queues[1]);
-                row_chk_enc_triblock(MagmaUpper, ib,
-                                    dT(i), nb,
-                                    dev_chk_v, ld_dev_chk_v,
-                                    dT_rowchk(i), lddt_rowchk, 
-                                    queues[1]);
-                
-                if (DEBUG) {
-                    printf( "T (%d * %d):\n", ib, ib);
-                    printMatrix_gpu(dT(i), nb, ib, ib,  nb, nb, queues[1]);
-                    printf( "column chk:\n" );
-                    printMatrix_gpu(dT_colchk(i), lddt_colchk, 
-                                    2, ib, 2, nb, queues[1]);
-                    printf( "row chk:\n" );
-                    printMatrix_gpu(dT_rowchk(i), lddt_rowchk,  
-                                    ib, 2, nb, 2, queues[1]);
 
+                if (COL_FT || ROW_FT) {
+                    col_chk_enc_triblock(MagmaUpper, ib,
+                                        dT(i), nb,
+                                        dev_chk_vt, ld_dev_chk_vt,
+                                        dT_colchk(i), lddt_colchk, 
+                                        queues[1]);
+                    row_chk_enc_triblock(MagmaUpper, ib,
+                                        dT(i), nb,
+                                        dev_chk_v, ld_dev_chk_v,
+                                        dT_rowchk(i), lddt_rowchk, 
+                                        queues[1]);
                 }
+
+                // if (DEBUG) {
+                //     printf( "T (%d * %d):\n", ib, ib);
+                //     printMatrix_gpu(dT(i), nb, ib, ib,  nb, nb, queues[1]);
+                //     printf( "column chk:\n" );
+                //     printMatrix_gpu(dT_colchk(i), lddt_colchk, 
+                //                     2, ib, 2, nb, queues[1]);
+                //     printf( "row chk:\n" );
+                //     printMatrix_gpu(dT_rowchk(i), lddt_rowchk,  
+                //                     ib, 2, nb, 2, queues[1]);
+
+                // }
                 
                 if (i+nb < minmn-nb) {
                     // Apply H^H to A(i:m,i+ib:i+2*ib) from the left
-                    magma_dlarfb_gpu( MagmaLeft, MagmaConjTrans, MagmaForward, MagmaColumnwise,
-                                      rows, ib, ib,
-                                      dA(i, i   ), ldda, dT(i),  nb,
-                                      dA(i, i+ib), ldda, dwork(0), lddwork, queues[1] );
+                    // magma_dlarfb_gpu( MagmaLeft, MagmaConjTrans, MagmaForward, MagmaColumnwise,
+                    //                   rows, ib, ib,
+                    //                   dA(i, i   ), ldda, dT(i),  nb,
+                    //                   dA(i, i+ib), ldda, dwork(0), lddwork, queues[1] );
+
+                    //  if (DEBUG) {
+                    //     gpu_row = rows;
+                    //     gpu_col = ib;
+                    //     printf( "input matrix A:\n" );
+                    //     printMatrix_gpu(dA(i, i+ib), ldda, gpu_row, gpu_col, nb, nb, queues[1]);
+                    //     printf( "column chk:\n" );
+                    //     printMatrix_gpu(dA_colchk(i, i+ib), ldda_colchk, 
+                    //                     (gpu_row / nb) * 2, gpu_col, 2, nb, queues[1]);
+                    //     printf( "row chk:\n" );
+                    //     printMatrix_gpu(dA_rowchk(i, i+ib), ldda_rowchk,  
+                    //                     gpu_row, (gpu_col / nb) * 2, nb, 2, queues[1]);
+                    // }
+
+
+                    abft_dlarfb_gpu( MagmaLeft, MagmaConjTrans, MagmaForward, MagmaColumnwise,
+                                     rows, ib, ib,
+                                     dA(i, i   ), ldda, dT(i),  nb,
+                                     dA(i, i+ib), ldda, dwork(0), lddwork,
+                                     nb,
+                                     dA_colchk(i, i),   ldda_colchk,
+                                     dA_rowchk(i, i),   ldda_rowchk,
+                                     dA_colchk_r(i, i), ldda_colchk_r,
+                                     dA_rowchk_r(i, i), ldda_rowchk_r,
+                                     dT_colchk(i),   lddt_colchk,
+                                     dT_rowchk(i),   lddt_rowchk,
+                                     dT_colchk_r(i), lddt_colchk_r,
+                                     dT_rowchk_r(i), lddt_rowchk_r,
+                                     dA_colchk(i, i+ib),   ldda_colchk,
+                                     dA_rowchk(i, i+ib),   ldda_rowchk,
+                                     dA_colchk_r(i, i+ib), ldda_colchk_r,
+                                     dA_rowchk_r(i, i+ib), ldda_rowchk_r,
+                                     dwork_colchk(0),   lddt_colchk,
+                                     dwork_rowchk(0),   lddt_rowchk,
+                                     dwork_colchk_r(0), lddt_colchk_r,
+                                     dwork_rowchk_r(0), lddt_rowchk_r,
+                                     dev_chk_v, ld_dev_chk_v,
+                                     COL_FT, ROW_FT, DEBUG, CHECK_BEFORE, CHECK_AFTER, 
+                                     queues[1], queues[1]);
                     // wait for larfb to finish with dwork before larfb in next iteration starts
                     magma_queue_sync( queues[1] );
                 }
@@ -590,7 +744,11 @@ magma_dgeqrf_gpu(
                 }
                 old_i  = i;
                 old_ib = ib;
+
             }
+            if (profile) last_prof_iter = i/ib;
+            // printf("%d, pd-tmu, %f, %f, %f, %f, %f, %f, %d, %d, \n", i, pd_time_prof, tmu_time_prof, pd_time_actual, tmu_time_actual, pd_time_pred, tmu_time_pred, tmu_freq, pd_freq);
+            if (i > 0) slack_time_actual_avg += fabs(tmu_time_actual-pd_time_actual);
         }
         total_time = magma_wtime() - total_time;
         stop_measure_cpu(pid);
@@ -598,6 +756,7 @@ magma_dgeqrf_gpu(
         printf("GPU energy: %llu\n", start_energy);
         printf("Prediction average error: CPU %f, GPU %f\n", pd_avg_error/(n/nb-1), tmu_avg_error/(n/nb-1));
         printf("Total time: %f\n", total_time);
+        printf("Average slack: %f\n", slack_time_actual_avg/(n/ib-1));
         //reset
         adj_gpu(device, 1500, 338000, -500);
 

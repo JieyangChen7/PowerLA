@@ -11,7 +11,7 @@ void abft_checker_colchk(double * dA, int ldda, int m, int n, int nb,
     					 double * dev_chk_v,    int ld_dev_chk_v,
     					 bool DEBUG,
     					 magma_queue_t stream){
-	if (DEBUG) printf("abft_checker_colchk\n");
+	// if (DEBUG) printf("abft_checker_colchk\n");
 	col_chk_enc(m, n, nb, 
                 dA, ldda,  
                 dev_chk_v, ld_dev_chk_v, 
@@ -27,10 +27,10 @@ void abft_checker_colchk(double * dA, int ldda, int m, int n, int nb,
  //            printf( "recalculated column chk:\n" );
  //            printMatrix_gpu(dA_colchk_r, ldda_colchk_r, (m / nb) * 2, n, 2, nb, stream);
  //    }
-    // colchk_detect_correct(dA, ldda, m, n, nb,
-				//           dA_colchk,	ldda_colchk,
-				//           dA_colchk_r, 	ldda_colchk_r,
-				// 		  stream);
+    colchk_detect_correct(dA, ldda, m, n, nb,
+				          dA_colchk,	ldda_colchk,
+				          dA_colchk_r, 	ldda_colchk_r,
+						  stream);
 }
 
 
@@ -41,7 +41,7 @@ void abft_checker_rowchk(double * dA, int ldda, int m, int n, int nb,
     					 double * dev_chk_v,    int ld_dev_chk_v,
     					 bool DEBUG,
     					 magma_queue_t stream){
-	if (DEBUG) printf("abft_checker_rowchk\n");
+	// if (DEBUG) printf("abft_checker_rowchk\n");
 	row_chk_enc(m, n, nb, 
                 dA, ldda,  
                 dev_chk_v, ld_dev_chk_v, 
@@ -49,14 +49,14 @@ void abft_checker_rowchk(double * dA, int ldda, int m, int n, int nb,
                 stream);
 
 	
-	// if (DEBUG) {
-	// 		printf( "input matrix:\n" );
- //            printMatrix_gpu(dA, ldda, m, n, nb, nb, stream);
- //            printf( "updated row chk:\n" );
- //            printMatrix_gpu(dA_rowchk, ldda_rowchk, m, (n / nb) * 2, nb, 2, stream);
- //            printf( "recalculated row chk:\n" );
- //            printMatrix_gpu(dA_rowchk_r, ldda_rowchk_r, m, (n / nb) * 2, nb, 2, stream);
- //    }
+	if (DEBUG) {
+			printf( "input matrix:\n" );
+            printMatrix_gpu(dA, ldda, m, n, nb, nb, stream);
+            printf( "updated row chk:\n" );
+            printMatrix_gpu(dA_rowchk, ldda_rowchk, m, (n / nb) * 2, nb, 2, stream);
+            printf( "recalculated row chk:\n" );
+            printMatrix_gpu(dA_rowchk_r, ldda_rowchk_r, m, (n / nb) * 2, nb, 2, stream);
+    }
     rowchk_detect_correct(dA, ldda, m, n, nb,
 				          dA_rowchk,	ldda_rowchk,
 				          dA_rowchk_r, 	ldda_rowchk_r,
@@ -100,7 +100,7 @@ void abft_checker_colchk(float * dA, int ldda, int m, int n, int nb,
                          float * dev_chk_v,    int ld_dev_chk_v,
                          bool DEBUG,
                          magma_queue_t stream){
-    if (DEBUG) printf("abft_checker_colchk\n");
+    // if (DEBUG) printf("abft_checker_colchk\n");
     col_chk_enc(m, n, nb, 
                 dA, ldda,  
                 dev_chk_v, ld_dev_chk_v, 
@@ -128,7 +128,7 @@ void abft_checker_rowchk(float * dA, int ldda, int m, int n, int nb,
                          float * dev_chk_v,    int ld_dev_chk_v,
                          bool DEBUG,
                          magma_queue_t stream){
-    if (DEBUG) printf("abft_checker_rowchk\n");
+    // if (DEBUG) printf("abft_checker_rowchk\n");
     row_chk_enc(m, n, nb, 
                 dA, ldda,  
                 dev_chk_v, ld_dev_chk_v, 

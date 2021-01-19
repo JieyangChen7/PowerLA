@@ -133,7 +133,7 @@ magma_dgetrf_gpu_expert(
     /* Function Body */
     minmn = min( m, n );
     nb    = (mode == MagmaHybrid) ? magma_get_dgetrf_nb( m, n ) : magma_get_dgetrf_native_nb( m, n );
-    nb = 512;
+    nb = 8192;
     //nb = 4;
     magma_queue_t queues[2] = { NULL };
     magma_device_t cdev;
@@ -202,6 +202,7 @@ magma_dgetrf_gpu_expert(
         double pd_time_pred = 0.0, tmu_time_pred = 0.0;
         double pd_avg_error = 0.0, tmu_avg_error = 0.0; 
         double tmu_ft_time_actual = 0.0;
+        double slack_time_actual_avg = 0.0;
 
         double slack_time;
         double reclaimnation_ratio = 0.8;
@@ -235,7 +236,7 @@ magma_dgetrf_gpu_expert(
         unsigned long long start_energy;
         int pid;
 
-        bool reclaim_slack = true;
+        bool reclaim_slack = false;
         int profile_interval = 1;
         int last_prof_iter = 1;
 
@@ -309,38 +310,40 @@ magma_dgetrf_gpu_expert(
         double * dA_colchk;
         size_t pitch_dA_colchk = magma_roundup((gpu_row / nb) * 2 * sizeof(double), 32);
         int ldda_colchk = pitch_dA_colchk / sizeof(double);
-        magma_dmalloc(&dA_colchk, pitch_dA_colchk * gpu_col);
+        if (COL_FT || ROW_FT) magma_dmalloc(&dA_colchk, pitch_dA_colchk * gpu_col);
 
         double * dA_colchk_r;
         size_t pitch_dA_colchk_r = magma_roundup((gpu_row / nb) * 2 * sizeof(double), 32);
         int ldda_colchk_r = pitch_dA_colchk_r / sizeof(double);
-        magma_dmalloc(&dA_colchk_r, pitch_dA_colchk_r * gpu_col);
+        if (COL_FT || ROW_FT) magma_dmalloc(&dA_colchk_r, pitch_dA_colchk_r * gpu_col);
 
         double * dA_rowchk;
         size_t pitch_dA_rowchk = magma_roundup(gpu_row * sizeof(double), 32);
         int ldda_rowchk = pitch_dA_rowchk / sizeof(double);
-        magma_dmalloc(&dA_rowchk, pitch_dA_rowchk * (gpu_col / nb) * 2);
+        if (COL_FT || ROW_FT) magma_dmalloc(&dA_rowchk, pitch_dA_rowchk * (gpu_col / nb) * 2);
 
         double * dA_rowchk_r;
         size_t pitch_dA_rowchk_r = magma_roundup(gpu_row * sizeof(double), 32);
         int ldda_rowchk_r = pitch_dA_rowchk_r / sizeof(double);
-        magma_dmalloc(&dA_rowchk_r, pitch_dA_rowchk_r * (gpu_col / nb) * 2);
+        if (COL_FT || ROW_FT) magma_dmalloc(&dA_rowchk_r, pitch_dA_rowchk_r * (gpu_col / nb) * 2);
            
         printf( "done.\n" );
 
        
         printf( "calculate initial checksum on GPUs......\n" ); 
-        col_chk_enc(gpu_row, gpu_col, nb, 
-                    dA, ldda,  
-                    dev_chk_v, ld_dev_chk_v, 
-                    dA_colchk, ldda_colchk, 
-                    queues[1]);
+        if (COL_FT || ROW_FT) {
+            col_chk_enc(gpu_row, gpu_col, nb, 
+                        dA, ldda,  
+                        dev_chk_v, ld_dev_chk_v, 
+                        dA_colchk, ldda_colchk, 
+                        queues[1]);
 
-        row_chk_enc(gpu_row, gpu_col, nb, 
-                    dA, ldda,  
-                    dev_chk_v, ld_dev_chk_v, 
-                    dA_rowchk, ldda_rowchk, 
-                    queues[1]);
+            row_chk_enc(gpu_row, gpu_col, nb, 
+                        dA, ldda,  
+                        dev_chk_v, ld_dev_chk_v, 
+                        dA_rowchk, ldda_rowchk, 
+                        queues[1]);
+        }
 
         printf( "done.\n" );
 
@@ -394,28 +397,30 @@ magma_dgetrf_gpu_expert(
         double * dAT_colchk;
         size_t pitch_dAT_colchk = magma_roundup((gpu_row / nb) * 2 * sizeof(double), 32);
         int lddat_colchk = pitch_dAT_colchk / sizeof(double);
-        magma_dmalloc(&dAT_colchk, pitch_dAT_colchk * gpu_col);
+        if (COL_FT || ROW_FT) magma_dmalloc(&dAT_colchk, pitch_dAT_colchk * gpu_col);
 
         double * dAT_colchk_r;
         size_t pitch_dAT_colchk_r = magma_roundup((gpu_row / nb) * 2 * sizeof(double), 32);
         int lddat_colchk_r = pitch_dAT_colchk_r / sizeof(double);
-        magma_dmalloc(&dAT_colchk_r, pitch_dAT_colchk_r * gpu_col);
+        if (COL_FT || ROW_FT) magma_dmalloc(&dAT_colchk_r, pitch_dAT_colchk_r * gpu_col);
 
         double * dAT_rowchk;
         size_t pitch_dAT_rowchk = magma_roundup(gpu_row * sizeof(double), 32);
         int lddat_rowchk = pitch_dAT_rowchk / sizeof(double);
-        magma_dmalloc(&dAT_rowchk, pitch_dAT_rowchk * (gpu_col / nb) * 2);
+        if (COL_FT || ROW_FT) magma_dmalloc(&dAT_rowchk, pitch_dAT_rowchk * (gpu_col / nb) * 2);
 
         double * dAT_rowchk_r;
         size_t pitch_dAT_rowchk_r = magma_roundup(gpu_row * sizeof(double), 32);
         int lddat_rowchk_r = pitch_dAT_rowchk_r / sizeof(double);
-        magma_dmalloc(&dAT_rowchk_r, pitch_dAT_rowchk_r * (gpu_col / nb) * 2);
+        if (COL_FT || ROW_FT) magma_dmalloc(&dAT_rowchk_r, pitch_dAT_rowchk_r * (gpu_col / nb) * 2);
            
         printf( "done.\n" );
 
         printf( "Transposing checksums on GPUs......\n" );
-        magmablas_dtranspose( (m/nb)*2, n, dA_colchk, ldda_colchk, dAT_rowchk, lddat_rowchk, queues[0] );
-        magmablas_dtranspose( m, (n/nb)*2, dA_rowchk, ldda_rowchk, dAT_colchk, lddat_colchk, queues[0] );
+        if (COL_FT || ROW_FT) {
+            magmablas_dtranspose( (m/nb)*2, n, dA_colchk, ldda_colchk, dAT_rowchk, lddat_rowchk, queues[0] );
+            magmablas_dtranspose( m, (n/nb)*2, dA_rowchk, ldda_rowchk, dAT_colchk, lddat_colchk, queues[0] );
+        }
 
         if (DEBUG) {
 
@@ -704,8 +709,8 @@ magma_dgetrf_gpu_expert(
                              c_one,     dAT(j+nb, j+nb), lddat, queues[1] );
             }
             if (profile) last_prof_iter = j/nb;
-            printf("%d, pd-tmu, %f, %f, %f, %f, %f, %f, %d, %d, \n", j, pd_time_prof, tmu_time_prof, pd_time_actual, tmu_time_actual, pd_time_pred, tmu_time_pred, tmu_freq, pd_freq);
-
+            // printf("%d, pd-tmu, %f, %f, %f, %f, %f, %f, %d, %d, \n", j, pd_time_prof, tmu_time_prof, pd_time_actual, tmu_time_actual, pd_time_pred, tmu_time_pred, tmu_freq, pd_freq);
+            if (j > 0) slack_time_actual_avg += fabs(tmu_time_actual-pd_time_actual);
         }
         total_time = magma_wtime() - total_time;
         stop_measure_cpu(pid);
@@ -713,6 +718,7 @@ magma_dgetrf_gpu_expert(
         printf("GPU energy: %llu\n", start_energy);
         printf("Prediction average error: CPU %f, GPU %f\n", pd_avg_error/(n/nb-1), tmu_avg_error/(n/nb-1));
         printf("Total time: %f\n", total_time);
+        printf("Average slack: %f\n", slack_time_actual_avg/(n/nb-1));
 
         jb = min( m-j, n-j );
         if ( jb > 0 ) {

@@ -5,6 +5,7 @@
 #include "abft_io.h"
 #include <string>
 #include "cuda_runtime.h"
+#include "../fault_tolerance/abft_printer.h"
 //dgemm with FT
 
 /**
@@ -186,6 +187,19 @@ void abft_dgemm( magma_trans_t transA, magma_trans_t transB,
 						stream2);
 		} else {
 			//we can further work on this to support trans A.
+			// printf( "gemm-A:\n" );
+   //      	printMatrix_gpu(dA, ldda, m, k, nb, nb, stream2);
+   //      	printf( "gemm-B:\n" );
+   //      	printMatrix_gpu(dB, lddb, k, n, nb, nb, stream2);
+   //      	printf( "gemm-B-colchk:\n" );
+   //      	printMatrix_gpu(dB_colchk, lddb_colchk, (k/nb)*2, n, 2, nb, stream2);
+   //      	printf( "gemm-C:\n" );
+   //      	printMatrix_gpu(dC, lddc, m, n, nb, nb, stream2);
+   //      	printf( "gemm-C-rowchk:\n" );
+   //      	printMatrix_gpu(dC_rowchk, lddc_rowchk, m, (n/nb)*2, nb, 2, stream2);
+
+
+   //      	printf("size = %d %d %d\n", m , (k / nb) * 2, n);
 			magma_dgemm(transA, transB,
 						m , (n / nb) * 2, k,
 						alpha,
@@ -194,6 +208,14 @@ void abft_dgemm( magma_trans_t transA, magma_trans_t transB,
 						beta,
 						dC_rowchk, lddc_rowchk,
 						stream2);
+
+
+			// printf( "gemm-C-rowchk:\n" );
+   //      	printMatrix_gpu(dC_rowchk, lddc_rowchk, m, (n/nb)*2, nb, 2, stream2);
+
+
+			// printf( "gemm-C-rowchk-updated:\n" );
+   //      	printMatrix_gpu(dC_rowchk, lddc_rowchk, m, (n/nb)*2, nb, 2, stream2);
 		}
 
 		if (DEBUG_GEMM) {
