@@ -75,13 +75,19 @@ void pm_gpu(nvmlDevice_t device) {
     }
 }
 
-int adj_gpu(nvmlDevice_t device, int clock, int power, int offset)
-{
-    
+void reset_gpu(nvmlDevice_t device) {
+    nvmlDeviceResetGpuLockedClocks(device);
+}
+
+void offset_gpu(int offset) {
     std::string offset_str = std::to_string(offset);
     std::string offset_cmd = "sudo nvidia-settings -a [gpu:0]/GPUGraphicsClockOffset[4]="+ offset_str + " > /dev/null";
     system(offset_cmd.c_str());
+}
 
+int adj_gpu(nvmlDevice_t device, int clock, int power)
+{
+    
     nvmlReturn_t result;
     result = nvmlDeviceSetPowerManagementLimit (device, power);
     if (NVML_SUCCESS != result)
