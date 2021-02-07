@@ -237,24 +237,24 @@ magma_dpotrf_LL_expert_gpu(
         pm_gpu(device);
 
         double total_time = 0.0;
-        double pd_time_actual = 0.0, tmu_time_actual = 0.0;
-        double pd_time_prof = 0.0, tmu_time_prof = 0.0;
-        double pd_time_ratio = 1, tmu_time_ratio = 1;
-        double pd_time_pred = 0.0, tmu_time_pred = 0.0;
-        double pd_avg_error = 0.0, tmu_avg_error = 0.0; 
+        double pd_time_actual = 0.0, tmu_time_actual = 0.0, dt_time_actual = 0.0;;
+        double pd_time_prof = 0.0, tmu_time_prof = 0.0, dt_time_prof = 0.0;
+        double pd_time_ratio = 1, tmu_time_ratio = 1, dt_time_ratio = 1;
+        double pd_time_pred = 0.0, tmu_time_pred = 0.0, dt_time_pred = 0.0;
+        double pd_avg_error = 0.0, tmu_avg_error = 0.0, dt_avg_error = 0.0; 
         double tmu_ft_time_actual = 0.0;
 
         double slack_time_actual_avg = 0.0;
 
         double slack_time;
-        double reclaimnation_ratio = 0.8;
+        double reclaimnation_ratio = 0.05;
 
         int tmu_desired_freq;
         int tmu_freq;
-        int tmu_curr_freq = 1500;
-        int tmu_base_freq = 1500;
+        int tmu_curr_freq = 1300;
+        int tmu_base_freq = 1300;
 
-        int tmu_base_offset = -500;
+        int tmu_base_offset = 0;
         int tmu_opt_offset = 200;
         adj_gpu(device, tmu_base_freq, 338000); // lock frequency is necessary for accurate prediction
         offset_gpu(tmu_base_offset);
@@ -264,6 +264,7 @@ magma_dpotrf_LL_expert_gpu(
         int pd_curr_freq = 3500;
         int pd_base_freq = 3500;
         adj_cpu(pd_base_freq);
+        reset_cpu();
 
 
         cudaEvent_t start, stop;
@@ -408,6 +409,7 @@ magma_dpotrf_LL_expert_gpu(
 
         if (overclock) {
             offset_gpu(tmu_opt_offset);
+            undervolt_cpu();
         }
 
         if (autoboost) {
@@ -426,40 +428,95 @@ magma_dpotrf_LL_expert_gpu(
             if ((j/jb-last_prof_iter)%profile_interval == 0) profile = true;
             bool predict = false;
             if (j/jb > 1) predict = true;
+            bool reclaim_tmu = reclaim_slack;
+            bool reclaim_pd = reclaim_slack;
+
+            pd_time_actual = 0.0;
+            dt_time_actual = 0.0;
+            tmu_time_actual = 0.0;
+
+            // set default
+            pd_freq = pd_base_freq;
+            tmu_freq = tmu_base_freq;
 
             //prediction
             if (predict) {
+                // predict execution if it is under base frequency
                 double pd_freq_ratio = (double)last_prof_freq_pd/pd_base_freq;
                 double tmu_freq_ratio = (double)last_prof_freq_tmu/tmu_base_freq;
                 pd_time_ratio = 1.0;
+                dt_time_ratio = 1.0;
                 tmu_time_ratio = (double)abft_dgemm_flops(MagmaNoTrans, MagmaConjTrans, n-j-jb, jb, j, nb, COL_FT, ROW_FT, CHECK_BEFORE, CHECK_AFTER)/
                         abft_dgemm_flops(MagmaNoTrans, MagmaConjTrans,n-jb*last_prof_iter-jb, jb, jb*last_prof_iter, nb, COL_FT, ROW_FT, CHECK_BEFORE, CHECK_AFTER);
-
-
-                //printf("%f\n", tmu_time_ratio);
-
                 pd_time_pred = pd_time_prof * pd_time_ratio * pd_freq_ratio;
+                dt_time_pred = dt_time_prof * dt_time_ratio;
                 tmu_time_pred = tmu_time_prof * tmu_time_ratio * tmu_freq_ratio;
+                slack_time = tmu_time_pred - pd_time_pred - dt_time_pred;
 
-                slack_time = tmu_time_pred - pd_time_pred;
+                printf("j = %d\n", j);
+                printf("pd_time_prof: %f, tmu_time_prof: %f\n", pd_time_prof, tmu_time_prof);
+                printf("last_prof_freq_pd: %d, last_prof_freq_tmu: %d\n", last_prof_freq_pd, last_prof_freq_tmu);
+                printf("pd_time_ratio: %f, tmu_time_ratio: %f\n", pd_time_ratio, tmu_time_ratio);
+                printf("pd_freq_ratio: %f, tmu_freq_ratio: %f\n", pd_freq_ratio, tmu_freq_ratio);
+                printf("pd_time_pred: %f, tmu_time_pred: %f\n", pd_time_pred, tmu_time_pred);
+                // determine frequency
+                double gpu_adj_time = 15;
+                double cpu_adj_time = 80;
 
-                tmu_desired_freq = tmu_time_pred/(tmu_time_pred-(reclaimnation_ratio*slack_time)) * tmu_base_freq;
+                double tmu_desired_time = tmu_time_pred-(reclaimnation_ratio*slack_time)-gpu_adj_time;
+                double pd_desired_time = tmu_desired_time-cpu_adj_time-dt_time_pred;
+
+                if (tmu_desired_time < 0) tmu_desired_time = 1;
+                if (pd_desired_time < 0 ) pd_desired_time = 1;
+                printf("pd_desired_time: %f, tmu_desired_time: %f\n", pd_desired_time, tmu_desired_time);
+
+                tmu_desired_freq = tmu_time_pred/tmu_desired_time * tmu_base_freq;
                 tmu_freq = tmu_desired_freq;
                 if (tmu_desired_freq > 2000) tmu_freq = 2000;
                 if (tmu_desired_freq < 500) tmu_freq = 500;
+                tmu_freq = (int)ceil((double)tmu_freq/100)*100;
 
-                pd_desired_freq = pd_time_pred/(pd_time_pred+((1-reclaimnation_ratio)*slack_time)) * pd_base_freq;
+                pd_desired_freq = pd_time_pred/pd_desired_time * pd_base_freq;
                 pd_freq = pd_desired_freq;
                 if (pd_desired_freq > 3500) pd_freq = 3500;
                 if (pd_desired_freq < 1000) pd_freq = 1000;
+                pd_freq = (int)ceil((double)pd_freq/100)*100;
 
-                if (reclaim_slack) {
-                    pd_freq_ratio = (double)pd_base_freq/pd_freq;
-                    tmu_freq_ratio = (double)tmu_base_freq/tmu_freq;
 
-                    pd_time_pred *= pd_freq_ratio;
-                    tmu_time_pred *= tmu_freq_ratio;
+                
+                // performance cannot be worse than baseline
+                double max_pd_tmu = max(pd_time_pred+dt_time_pred, tmu_time_pred);
+
+                // projected execution time if we apply frequency
+                pd_freq_ratio = (float)pd_base_freq/pd_freq;
+                tmu_freq_ratio = (float)tmu_base_freq/tmu_freq;
+                printf("pd_freq: %d, tmu_freq: %d\n", pd_freq, tmu_freq);
+                printf("pd_time_proj: %f, tmu_time_proj: %f\n", pd_time_pred * pd_freq_ratio, tmu_time_pred * tmu_freq_ratio);
+
+                //if we want to reclaim and there is benefit
+                if (reclaim_pd && pd_time_pred * pd_freq_ratio + cpu_adj_time + dt_time_pred <= max_pd_tmu) {
+                    printf("pd: plan reclaim %f <  %f\n", pd_time_pred * pd_freq_ratio + cpu_adj_time + dt_time_pred, max_pd_tmu);
+                    pd_time_pred = pd_time_pred * pd_freq_ratio;
+                } else { //if do not want to reclaim or there is no benefit
+                    printf("pd: not worth reclaim %f > %f\n", pd_time_pred * pd_freq_ratio + cpu_adj_time + dt_time_pred, max_pd_tmu);
+                    pd_freq_ratio = (float)pd_base_freq/pd_curr_freq;
+                    pd_time_pred = pd_time_pred * pd_freq_ratio;
+                    reclaim_pd = false;
                 }
+                // reclaim_pd = false;
+
+                
+                //if we want to reclaim and there is benefit
+                if (reclaim_tmu && tmu_time_pred * tmu_freq_ratio + gpu_adj_time <= max_pd_tmu) {
+                    printf("tmu: plan reclaim %f <  %f\n", tmu_time_pred * tmu_freq_ratio + gpu_adj_time, max_pd_tmu);
+                    tmu_time_pred = tmu_time_pred * tmu_freq_ratio;
+                } else { //if do not want to reclaim or there is no benefit
+                    printf("tmu: not worth reclaim %f >  %f\n", tmu_time_pred * tmu_freq_ratio + gpu_adj_time, max_pd_tmu);
+                    tmu_freq_ratio = (float)tmu_base_freq/tmu_curr_freq;
+                    tmu_time_pred = tmu_time_pred * tmu_freq_ratio;
+                    reclaim_tmu = false; 
+                }                
+                // reclaim_tmu = false; 
             }
 
             // printf("j = %d\n", j);
@@ -488,33 +545,13 @@ magma_dpotrf_LL_expert_gpu(
                             dev_chk_v,          ld_dev_chk_v, 
                             COL_FT, DEBUG, CHECK_BEFORE, CHECK_AFTER,
                             queues[0], queues[0]);
-
-            
-            // Azzam: this section of "ifthenelse" can be moved down to the factorize section and I don't think performane wil be affected.
-            if (mode == MagmaHybrid) {
-                magma_dgetmatrix_async( jb, jb,
-                                        dA(j, j), ldda,
-                                        work,     jb, queues[0] );
-                if (COL_FT || ROW_FT) {
-                  magma_dgetmatrix_async( 2, jb,
-                                          dA_colchk(j, j), ldda_colchk,
-                                          colchk,     ld_colchk, queues[0] );
-
-                  magma_dgetmatrix_async( jb, 2,
-                                          dA_rowchk(j, j), ldda_rowchk,
-                                          rowchk,     ld_rowchk, queues[0] );
-                }
-            }
-            else {
-                magma_dpotrf_rectile_native(MagmaLower, jb, recnb,
-                                            dA(j, j), ldda, j,
-                                            dinfo, info, queues[0] );
-            }
             
             // apply all previous updates to block column below diagonal block
             if (j+jb < n) {
                 magma_queue_wait_event(queues[1], events[0]);
-                if (reclaim_slack && j > jb) {
+                magma_queue_sync( queues[0] );
+                magma_queue_sync( queues[1] );
+                if (reclaim_tmu && j > jb) {
                     if (tmu_freq != tmu_curr_freq) {
                         adj_gpu(device, tmu_freq, 338000);
                         //printf("set to %d\n", tmu_freq);
@@ -569,29 +606,63 @@ magma_dpotrf_LL_expert_gpu(
                 
             }
             
+            // Azzam: this section of "ifthenelse" can be moved down to the factorize section and I don't think performane wil be affected.
+            if (mode == MagmaHybrid) {
+                if (reclaim_pd && j > jb) {
+                    if (pd_freq != pd_curr_freq) {
+                        adj_cpu(pd_freq);
+                        pd_curr_freq = pd_freq;
+                    }
+                }
+
+                dt_time_actual = magma_wtime();
+                magma_dgetmatrix_async( jb, jb,
+                                        dA(j, j), ldda,
+                                        work,     jb, queues[0] );
+                if (COL_FT || ROW_FT) {
+                  magma_dgetmatrix_async( 2, jb,
+                                          dA_colchk(j, j), ldda_colchk,
+                                          colchk,     ld_colchk, queues[0] );
+
+                  magma_dgetmatrix_async( jb, 2,
+                                          dA_rowchk(j, j), ldda_rowchk,
+                                          rowchk,     ld_rowchk, queues[0] );
+                }
+            }
+            else {
+                magma_dpotrf_rectile_native(MagmaLower, jb, recnb,
+                                            dA(j, j), ldda, j,
+                                            dinfo, info, queues[0] );
+            }
 
             // simultaneous with above dgemm, transfer diagonal block,
             // factor it on CPU, and test for positive definiteness
             // Azzam: The above section can be moved here the code will look cleaner.
             if (mode == MagmaHybrid) {
                 magma_queue_sync( queues[0] );
-                if (reclaim_slack && j > jb) {
-                    if (pd_freq != pd_curr_freq) {
-                        adj_cpu(pd_freq);
-                        pd_curr_freq = pd_freq;
-                    }
-                }
+                dt_time_actual = magma_wtime() - dt_time_actual;
                 
-                t1 = high_resolution_clock::now(); 
+                //t1 = high_resolution_clock::now(); 
+                pd_time_actual = magma_wtime();
                 lapackf77_dpotrf( MagmaLowerStr, &jb, work, &jb, info );
-                t2 = high_resolution_clock::now();
-                pd_time_actual  = duration_cast<milliseconds>(t2 - t1).count();;
+                pd_time_actual = (magma_wtime() - pd_time_actual) * 1000;
+                //t2 = high_resolution_clock::now();
+                //pd_time_actual  = duration_cast<milliseconds>(t2 - t1).count();
                 if (profile) pd_time_prof = pd_time_actual;
                 if (predict) pd_avg_error += fabs(pd_time_actual - pd_time_pred) / pd_time_actual;
 
+                dt_time_actual = (-1)*dt_time_actual;
+                dt_time_actual += magma_wtime();
                 magma_dsetmatrix_async( jb, jb,
                                         work,     jb,
                                         dA(j, j), ldda, queues[0] );
+
+                magma_queue_sync( queues[0] );
+                dt_time_actual = magma_wtime() - dt_time_actual;
+                dt_time_actual *= 1000;
+                if (profile) dt_time_prof = dt_time_actual;
+                if (predict) dt_avg_error += fabs(dt_time_actual - dt_time_pred) / dt_time_actual;
+
                 if (*info != 0) {
                     *info = *info + j;
                     break;
@@ -647,20 +718,21 @@ magma_dpotrf_LL_expert_gpu(
                 last_prof_freq_pd = pd_curr_freq;
                 last_prof_freq_tmu = tmu_curr_freq;
             }
-            printf("%d, pd-tmu, %f, %f, %f, %f, %f, %f, %d, %d, \n", j, pd_time_prof, tmu_time_prof, pd_time_actual, tmu_time_actual, pd_time_pred, tmu_time_pred, tmu_freq, pd_freq);
-            if (j > 0) slack_time_actual_avg += fabs(tmu_time_actual-pd_time_actual);
+            // printf("%d, pd-tmu, %f, %f, %f, %f, %f, %f, %d, %d, \n", j, pd_time_actual, dt_time_actual, tmu_time_actual, pd_time_pred, dt_time_pred, tmu_time_pred, pd_freq, tmu_freq);
+            if (j > 0) slack_time_actual_avg += fabs(tmu_time_actual-pd_time_actual-dt_time_actual);
 
         }
         total_time = magma_wtime() - total_time;
         stop_measure_cpu(pid);
         start_energy = stop_measure_gpu(device, start_energy);
         printf("GPU energy: %llu\n", start_energy);
-        printf("Prediction average error: CPU %f, GPU %f\n", pd_avg_error/(n/jb-1), tmu_avg_error/(n/jb-1));
+        printf("Prediction average error: CPU %f, DT, %f, GPU %f\n", pd_avg_error/(n/jb-1), dt_avg_error/(n/jb-1),tmu_avg_error/(n/jb-1));
         printf("Total time: %f\n", total_time);
         printf("Average slack: %f\n", slack_time_actual_avg/(n/jb-1));
         //reset
         adj_gpu(device, 1500, 338000);
         offset_gpu(0);
+        reset_cpu();
     }
     if (mode == MagmaNative)
         magma_getvector( 1, sizeof(magma_int_t), dinfo, 1, info, 1, queues[0]);

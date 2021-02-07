@@ -28,7 +28,8 @@ void abft_ssyrk(magma_uplo_t uplo, magma_trans_t trans,
                  float * dC_rowchk_r,  int lddc_rowchk_r,
                  float * chk_v,        int ld_chk_v, 
                  bool FT, bool DEBUG, bool CHECK_BEFORE, bool CHECK_AFTER,
-                 magma_queue_t stream1, magma_queue_t stream2){
+                 magma_queue_t stream1, magma_queue_t stream2
+                 ){
     
     /*         k                n
      * ******************   *********
@@ -36,10 +37,10 @@ void abft_ssyrk(magma_uplo_t uplo, magma_trans_t trans,
      * *                *   *       *
      * ******************   *********
      */
-    
+
     if (FT && CHECK_BEFORE) {
         if (DEBUG) printf("ssyrk-before-check-A-col\n");
-        abft_checker_colchk(dA, lddc, n, k, nb,
+        abft_checker_colchk(dA, ldda, n, k, nb,
                             dA_colchk,   ldda_colchk,
                             dA_colchk_r, ldda_colchk_r,
                             chk_v,       ld_chk_v,
@@ -47,29 +48,13 @@ void abft_ssyrk(magma_uplo_t uplo, magma_trans_t trans,
                             stream1);
 
         if (DEBUG) printf("ssyrk-before-check-C-col\n");
-        abft_checker_colchk(dC, lddc, n, n, nb,
+        abft_checker_colchk(dC, ldda, n, n, nb,
                             dC_colchk,   lddc_colchk,
                             dC_colchk_r, lddc_colchk_r,
                             chk_v,       ld_chk_v,
                             DEBUG,
                             stream1);   
     }
-#ifdef RECORD_TIME_AND_ENERGY
-    if (nvmlInit () != NVML_SUCCESS){
-        printf("init error");
-        return;
-    }
-    int i = 0;
-    nvmlReturn_t result;
-    nvmlDevice_t device;
-    result = nvmlDeviceGetHandleByIndex(i, &device);
-    if (NVML_SUCCESS != result){
-      printf("Failed to get handle for device %i: %s\n", i, nvmlErrorString(result));
-      return;
-    }
-    double time = 0.0;
-    record_time_and_energy_start(&time, stream1, device);
-#endif
 
     if (FT) {
         magma_sgemm(
@@ -86,42 +71,7 @@ void abft_ssyrk(magma_uplo_t uplo, magma_trans_t trans,
                     beta,     dC, lddc,
                     stream1);
     }
-
-#ifdef RECORD_TIME_AND_ENERGY
-    std::string time_energy_name = "ssyrk-" +
-                                    std::to_string(n) + "-" +
-                                    std::to_string(k) +
-                                    "-time-and-energy";
-    record_time_and_energy_end(&time, stream1, time_energy_name, device);
-#endif
-
-#ifdef GENERATE_GROUNDTRUTH
-    magma_queue_sync( stream1 );
-    std::string name = "ssyrk-" +
-                        std::to_string(n) + "-" +
-                        std::to_string(k) +
-                        "-groundtruth";
-    store_matrix(n, n, dC, lddc, stream1, name);
-#endif
-
-#ifdef FAULT_ANALYSIS
-    magma_queue_sync( stream1 );
-    std::string name = "ssyrk-" +
-                        std::to_string(n) + "-" +
-                        std::to_string(k) +
-                        "-groundtruth";
-    std::string name2 = "ssyrk-" +
-                        std::to_string(n) + "-" +
-                        std::to_string(k) +
-                        "-current";
-    std::string name3 = "ssyrk-" +
-                        std::to_string(n) + "-" +
-                        std::to_string(k) +
-                        "-diff";
-    store_matrix(n, n, dC, lddc, stream1, name2);
-    compare_matrices_float(n, n, name, name2, name3);
-#endif
-    
+ 
     if(FT){
         //update checksums on GPU
         magma_sgemm(
@@ -139,39 +89,14 @@ void abft_ssyrk(magma_uplo_t uplo, magma_trans_t trans,
     if (FT && CHECK_AFTER) {
         //verify C after update
         if (DEBUG) printf("ssyrk-after-check-C-col\n");
-        abft_checker_colchk(dC, lddc, n, n, nb,
+        abft_checker_colchk(dC, ldda, n, n, nb,
                             dC_colchk,   lddc_colchk,
                             dC_colchk_r, lddc_colchk_r,
                             chk_v,       ld_chk_v,
                             DEBUG,
                             stream1); 
-#ifdef FAULT_ANALYSIS
-    magma_queue_sync( stream1 );
-    std::string name4 = "ssyrk-" +
-                        std::to_string(n) + "-" +
-                        std::to_string(k) +
-                        "-current-after-abft";
-    std::string name5 = "ssyrk-" +
-                        std::to_string(n) + "-" +
-                        std::to_string(k) +
-                        "-diff-after-abft";
-    store_matrix(n, n, dC, lddc, stream1, name4);
-    compare_matrices_float(n, n, name, name4, name5);
-#endif
     }
-
-#ifdef VOID_PROPAGATION
-    magma_queue_sync( stream1 );
-    std::string groundtruth_name = "ssyrk-" +
-                                    std::to_string(n) + "-" +
-                                    std::to_string(k) +
-                                    "-groundtruth";
-                                    
-    load_matrix_to_dev(n, n, dC, lddc, stream1, groundtruth_name);
-
-#endif
-
-
+    
 }
 
 

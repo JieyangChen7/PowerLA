@@ -22,6 +22,8 @@ unsigned long long start_measure_gpu(nvmlDevice_t device);
 unsigned long long stop_measure_gpu(nvmlDevice_t device, unsigned long long start_energy);
 void pm_cpu();
 void adj_cpu(int clock);
+void undervolt_cpu();
+void reset_cpu();
 void pm_gpu(nvmlDevice_t device);
 void reset_gpu(nvmlDevice_t device);
 void offset_gpu(int offset);

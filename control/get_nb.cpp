@@ -181,7 +181,8 @@ magma_int_t magma_get_sgeqrf_nb( magma_int_t m, magma_int_t n )
         else if (minmn <  4096) nb = 64;
         else                    nb = 128;
     }
-    return nb;
+    //return nb;
+    return 1024;
 }
 
 /// @return nb for dgeqrf based on m, n

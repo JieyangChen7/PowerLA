@@ -240,8 +240,61 @@ void abft_sgemm( magma_trans_t transA, magma_trans_t transB,
               float * dC_colchk_r, int lddc_colchk_r,
               float * dC_rowchk_r, int lddc_rowchk_r,
               float * chk_v, int ld_chk_v, 
-              bool FT, bool DEBUG, bool CHECK_BEFORE, bool CHECK_AFTER,
+              bool COL_FT, bool ROW_FT, bool DEBUG, bool CHECK_BEFORE, bool CHECK_AFTER,
               magma_queue_t stream1, magma_queue_t stream2);
+
+
+
+extern "C" void
+abft_strmm(
+    magma_side_t side, magma_uplo_t uplo, magma_trans_t trans, magma_diag_t diag,
+    magma_int_t m, magma_int_t n, 
+    float alpha,
+    float * dA, int ldda,
+    float *       dB, int lddb,
+    magma_int_t nb,
+    float * dA_colchk,   int ldda_colchk,
+    float * dA_rowchk,   int ldda_rowchk,
+    float * dA_colchk_r, int ldda_colchk_r,
+    float * dA_rowchk_r, int ldda_rowchk_r,
+    float * dB_colchk,   int lddb_colchk,
+    float * dB_rowchk,   int lddb_rowchk,
+    float * dB_colchk_r, int lddb_colchk_r,
+    float * dB_rowchk_r, int lddb_rowchk_r,
+    float * chk_v, int ld_chk_v, 
+    bool COL_FT, bool ROW_FT, bool DEBUG, bool CHECK_BEFORE, bool CHECK_AFTER,
+    magma_queue_t stream1, magma_queue_t stream2);
+
+
+extern "C" magma_int_t
+abft_slarfb_gpu(
+    magma_side_t side, magma_trans_t trans, magma_direct_t direct, magma_storev_t storev,
+    magma_int_t m, magma_int_t n, magma_int_t k,
+    float * dV,    int lddv,
+    float * dT,    int lddt,
+    float * dC,    int lddc,
+    float * dwork, int ldwork,
+    int nb,
+    float * dV_colchk, int lddv_colchk,
+    float * dV_rowchk,   int lddv_rowchk,
+    float * dV_colchk_r, int lddv_colchk_r,
+    float * dV_rowchk_r, int lddv_rowchk_r,
+    float * dT_colchk, int lddt_colchk,
+    float * dT_rowchk,   int lddt_rowchk,
+    float * dT_colchk_r, int lddt_colchk_r,
+    float * dT_rowchk_r, int lddt_rowchk_r,
+    float * dC_colchk, int lddc_colchk,
+    float * dC_rowchk,   int lddc_rowchk,
+    float * dC_colchk_r, int lddc_colchk_r,
+    float * dC_rowchk_r, int lddc_rowchk_r,
+    float * dwork_colchk, int lddwork_colchk,
+    float * dwork_rowchk,   int lddwork_rowchk,
+    float * dwork_colchk_r, int lddwork_colchk_r,
+    float * dwork_rowchk_r, int lddwork_rowchk_r,
+    float * chk_v, int ld_chk_v, 
+    bool COL_FT, bool ROW_FT, bool DEBUG, bool CHECK_BEFORE, bool CHECK_AFTER, 
+    magma_queue_t stream1, magma_queue_t stream2);
+
 
 
 size_t abft_dgemm_flops(magma_trans_t transA, magma_trans_t transB,
@@ -249,5 +302,14 @@ size_t abft_dgemm_flops(magma_trans_t transA, magma_trans_t transB,
             bool COL_FT, bool ROW_FT, bool CHECK_BEFORE, bool CHECK_AFTER);
 
 size_t abft_dlarfb_flops(magma_side_t side, magma_trans_t trans, magma_direct_t direct, magma_storev_t storev,
+                            magma_int_t m, magma_int_t n, magma_int_t k, int nb,
+                             bool COL_FT, bool ROW_FT, bool CHECK_BEFORE, bool CHECK_AFTER);
+
+
+size_t abft_sgemm_flops(magma_trans_t transA, magma_trans_t transB,
+            int m, int n, int k, int nb,
+            bool COL_FT, bool ROW_FT, bool CHECK_BEFORE, bool CHECK_AFTER);
+
+size_t abft_slarfb_flops(magma_side_t side, magma_trans_t trans, magma_direct_t direct, magma_storev_t storev,
                             magma_int_t m, magma_int_t n, magma_int_t k, int nb,
                              bool COL_FT, bool ROW_FT, bool CHECK_BEFORE, bool CHECK_AFTER);
