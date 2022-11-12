@@ -456,69 +456,73 @@ magma_spotrf_LL_expert_gpu(
                 slack_time = tmu_time_pred - pd_time_pred - dt_time_pred;
 
                 printf("j = %d\n", j);
-                printf("pd_time_prof: %f, tmu_time_prof: %f\n", pd_time_prof, tmu_time_prof);
-                printf("last_prof_freq_pd: %d, last_prof_freq_tmu: %d\n", last_prof_freq_pd, last_prof_freq_tmu);
-                printf("pd_time_ratio: %f, tmu_time_ratio: %f\n", pd_time_ratio, tmu_time_ratio);
-                printf("pd_freq_ratio: %f, tmu_freq_ratio: %f\n", pd_freq_ratio, tmu_freq_ratio);
-                printf("pd_time_pred: %f, tmu_time_pred: %f\n", pd_time_pred, tmu_time_pred);
+                printf("[Last Iter] profiled time  PD: %6.2f, TMU: %6.2f, DT: %6.2f\n", pd_time_prof, tmu_time_prof, dt_time_prof);
+                printf("[Last Iter] used freq.     PD: %6d, TMU: %6d\n", last_prof_freq_pd, last_prof_freq_tmu);
+                printf("[Curr Iter] workload ratio PD: %6.2f, TMU: %6.2f, DT: %6.2f\n", pd_time_ratio, tmu_time_ratio, dt_time_ratio);
+                printf("[Curr Iter] freq ratio     PD: %6.2f, TMU: %6.2f\n", pd_freq_ratio, tmu_freq_ratio);
+                printf("[Curr Iter] predicted time PD: %6.2f, TMU: %6.2f, DT: %6.2f\n", pd_time_pred, tmu_time_pred, dt_time_pred);
                 // determine frequency
-                double gpu_adj_time = 15;
-                double cpu_adj_time = 80;
+                if (reclaim_slack) {
+                    double gpu_adj_time = 15;
+                    double cpu_adj_time = 80;
 
-                double tmu_desired_time = tmu_time_pred-(reclaimnation_ratio*slack_time)-gpu_adj_time;
-                double pd_desired_time = tmu_desired_time-cpu_adj_time-dt_time_pred;
+                    double tmu_desired_time = tmu_time_pred-(reclaimnation_ratio*slack_time)-gpu_adj_time;
+                    double pd_desired_time = tmu_desired_time-cpu_adj_time-dt_time_pred;
 
-                if (tmu_desired_time < 0) tmu_desired_time = 1;
-                if (pd_desired_time < 0 ) pd_desired_time = 1;
-                printf("pd_desired_time: %f, tmu_desired_time: %f\n", pd_desired_time, tmu_desired_time);
+                    if (tmu_desired_time < 0) tmu_desired_time = 1;
+                    if (pd_desired_time < 0 ) pd_desired_time = 1;
+                    printf("[Curr Iter] desired time   PD: %6.2f, TMU: %6.2f\n", pd_desired_time, tmu_desired_time);
 
-                tmu_desired_freq = tmu_time_pred/tmu_desired_time * tmu_base_freq;
-                tmu_freq = tmu_desired_freq;
-                if (tmu_desired_freq > 2100) tmu_freq = 2100;
-                if (tmu_desired_freq < 500) tmu_freq = 500;
-                tmu_freq = (int)ceil((double)tmu_freq/100)*100;
+                    tmu_desired_freq = tmu_time_pred/tmu_desired_time * tmu_base_freq;
+                    tmu_freq = tmu_desired_freq;
+                    if (tmu_desired_freq > 2100) tmu_freq = 2100;
+                    if (tmu_desired_freq < 500) tmu_freq = 500;
+                    tmu_freq = (int)ceil((double)tmu_freq/100)*100;
 
-                pd_desired_freq = pd_time_pred/pd_desired_time * pd_base_freq;
-                pd_freq = pd_desired_freq;
-                if (pd_desired_freq > 3500) pd_freq = 3500;
-                if (pd_desired_freq < 1000) pd_freq = 1000;
-                pd_freq = (int)ceil((double)pd_freq/100)*100;
+                    pd_desired_freq = pd_time_pred/pd_desired_time * pd_base_freq;
+                    pd_freq = pd_desired_freq;
+                    if (pd_desired_freq > 3500) pd_freq = 3500;
+                    if (pd_desired_freq < 1000) pd_freq = 1000;
+                    pd_freq = (int)ceil((double)pd_freq/100)*100;
 
 
-                
-                // performance cannot be worse than baseline
-                double max_pd_tmu = max(pd_time_pred+dt_time_pred, tmu_time_pred);
+                    
+                    // performance cannot be worse than baseline
+                    double max_pd_tmu = max(pd_time_pred+dt_time_pred, tmu_time_pred);
 
-                // projected execution time if we apply frequency
-                pd_freq_ratio = (float)pd_base_freq/pd_freq;
-                tmu_freq_ratio = (float)tmu_base_freq/tmu_freq;
-                printf("pd_freq: %d, tmu_freq: %d\n", pd_freq, tmu_freq);
-                printf("pd_time_proj: %f, tmu_time_proj: %f\n", pd_time_pred * pd_freq_ratio, tmu_time_pred * tmu_freq_ratio);
+                    // projected execution time if we apply frequency
+                    pd_freq_ratio = (float)pd_base_freq/pd_freq;
+                    tmu_freq_ratio = (float)tmu_base_freq/tmu_freq;
+                    printf("[Curr Iter] planned freq.  PD: %6d, TMU: %6d\n", pd_freq, tmu_freq);
+                    printf("[Curr Iter] projected time PD: %6.2f, TMU: %6.2f\n", pd_time_pred * pd_freq_ratio, tmu_time_pred * tmu_freq_ratio);
 
-                //if we want to reclaim and there is benefit
-                if (reclaim_pd && pd_time_pred * pd_freq_ratio + cpu_adj_time + dt_time_pred <= max_pd_tmu) {
-                    printf("pd: plan reclaim %f <  %f\n", pd_time_pred * pd_freq_ratio + cpu_adj_time + dt_time_pred, max_pd_tmu);
-                    pd_time_pred = pd_time_pred * pd_freq_ratio;
-                } else { //if do not want to reclaim or there is no benefit
-                    printf("pd: not worth reclaim %f > %f\n", pd_time_pred * pd_freq_ratio + cpu_adj_time + dt_time_pred, max_pd_tmu);
-                    pd_freq_ratio = (float)pd_base_freq/pd_curr_freq;
-                    pd_time_pred = pd_time_pred * pd_freq_ratio;
-                    reclaim_pd = false;
+                    // determine if we need to use ABFT
+                    // CHECK_AFTER = tmu_freq > 1900;
+                    printf("[Curr Iter] ABFT enabled: %d\n", CHECK_AFTER);
+
+
+                    //if we want to reclaim and there is benefit
+                    if (reclaim_pd && pd_time_pred * pd_freq_ratio + cpu_adj_time + dt_time_pred <= max_pd_tmu) {
+                        printf("[Curr Iter] PD: plan to reclaim %.2f (achievable) <  %.2f (baseline)\n", pd_time_pred * pd_freq_ratio + cpu_adj_time + dt_time_pred, max_pd_tmu);
+                        pd_time_pred = pd_time_pred * pd_freq_ratio;
+                    } else { //if do not want to reclaim or there is no benefit
+                        printf("[Curr Iter] PD: not worth to reclaim %.2f (achievable) > %.2f (baseline)\n", pd_time_pred * pd_freq_ratio + cpu_adj_time + dt_time_pred, max_pd_tmu);
+                        pd_freq_ratio = (float)pd_base_freq/pd_curr_freq;
+                        pd_time_pred = pd_time_pred * pd_freq_ratio;
+                        reclaim_pd = false;
+                    }
+                    
+                    //if we want to reclaim and there is benefit
+                    if (reclaim_tmu && tmu_time_pred * tmu_freq_ratio + gpu_adj_time <= max_pd_tmu) {
+                        printf("[Curr Iter] TMU: plan to reclaim %.2f (achievable) <  %.2f (baseline)\n", tmu_time_pred * tmu_freq_ratio + gpu_adj_time, max_pd_tmu);
+                        tmu_time_pred = tmu_time_pred * tmu_freq_ratio;
+                    } else { //if do not want to reclaim or there is no benefit
+                        printf("[Curr Iter] TMU: not worth to reclaim %.2f (achievable) <  %.2f (baseline)\n", tmu_time_pred * tmu_freq_ratio + gpu_adj_time, max_pd_tmu);
+                        tmu_freq_ratio = (float)tmu_base_freq/tmu_curr_freq;
+                        tmu_time_pred = tmu_time_pred * tmu_freq_ratio;
+                        reclaim_tmu = false; 
+                    }              
                 }
-                // reclaim_pd = false;
-
-                
-                //if we want to reclaim and there is benefit
-                if (reclaim_tmu && tmu_time_pred * tmu_freq_ratio + gpu_adj_time <= max_pd_tmu) {
-                    printf("tmu: plan reclaim %f <  %f\n", tmu_time_pred * tmu_freq_ratio + gpu_adj_time, max_pd_tmu);
-                    tmu_time_pred = tmu_time_pred * tmu_freq_ratio;
-                } else { //if do not want to reclaim or there is no benefit
-                    printf("tmu: not worth reclaim %f >  %f\n", tmu_time_pred * tmu_freq_ratio + gpu_adj_time, max_pd_tmu);
-                    tmu_freq_ratio = (float)tmu_base_freq/tmu_curr_freq;
-                    tmu_time_pred = tmu_time_pred * tmu_freq_ratio;
-                    reclaim_tmu = false; 
-                }              
-                // reclaim_tmu = false;   
             }
 
             // printf("j = %d\n", j);
@@ -735,7 +739,7 @@ magma_spotrf_LL_expert_gpu(
         total_time = magma_wtime() - total_time;
         stop_measure_cpu(pid);
         start_energy = stop_measure_gpu(device, start_energy);
-        printf("GPU energy: %llu\n", start_energy);
+        printf("GPU energy: %f Joule\n", (float)start_energy/1000.0);
         printf("Prediction average error: CPU %f, DT, %f, GPU %f\n", pd_avg_error/(n/jb-1), dt_avg_error/(n/jb-1),tmu_avg_error/(n/jb-1));
         printf("Total time: %f\n", total_time);
         printf("Average slack: %f\n", slack_time_actual_avg/(n/jb-1));

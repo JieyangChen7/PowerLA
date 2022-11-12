@@ -117,7 +117,7 @@ void adj_cpu(int clock) {
         }
     }
 
-
+    // printf("set cpu: %d\n", clock);
 
 }
 

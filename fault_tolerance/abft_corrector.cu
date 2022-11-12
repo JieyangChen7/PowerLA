@@ -79,7 +79,7 @@ rowchk_detect_correct_kernel(double * dA, int ldda, int nb, double E,
 			sum +=	*(dA + i * ldda); 
 		    }
 		}
-		//correct the error
+        //correct the error
 		*(dA + loc * ldda) = *dA_rowchk - sum;
      }
 }
