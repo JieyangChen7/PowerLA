@@ -55,8 +55,8 @@ The executables can be run with `<build dir>/testing/testing_*_gpu -N <matrix si
 
 ##### 4. When each test finishes execution it will output:
 
-* The energy consumption of CPU and GPU (total)
-* The time cost (per operation & total)
+* Energy consumption of CPU and GPU (total)
+* Time cost (per operation & total)
 * Predicted time cost (per iteration)
 * The slack prediction error (total average)
 * Clock frequency of CPU and GPU (per iteration)
